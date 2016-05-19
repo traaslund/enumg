@@ -36,6 +36,17 @@ field=SQ_REPEAT
 field=SQ_CONFIRM_REPEAT
 field=SQ_NO_DATA
 field=FC_START_MSG=0xffff          # field with specific value
+
+# can have multiple definitions per file;
+# all are compined into one header/source pair
+[other enum]
+field=field1
+field=field2
+...
+dield=fieldn
+
+[yet another]
+field=...
 ```
 
 ## c-functionality for above enum
