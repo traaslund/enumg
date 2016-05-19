@@ -1,8 +1,8 @@
+# enumg
 Generates c-source and -headers for enums containing "stringify" functions
 
-:::::::::::::::::::::::::::::::::::::::
-:: Command line
-:::::::::::::::::::::::::::::::::::::::
+## Command line
+```
 Usage: 
   enumg [file_1 [file_2 ... [file_n]]] [options]
 
@@ -11,10 +11,10 @@ options:
   -V        : verbose output
   -h        : this screen
             : this screen (no arguments)
+```
 
-:::::::::::::::::::::::::::::::::::::::
-:: Sample .ini file
-:::::::::::::::::::::::::::::::::::::::
+## Sample .ini file
+```
 c-header=hpp                       # header extension
 c-source=cpp                       # source extension           
 include-dir=include/               # where to put header
@@ -36,10 +36,10 @@ field=SQ_REPEAT
 field=SQ_CONFIRM_REPEAT
 field=SQ_NO_DATA
 field=FC_START_MSG=0xffff          # field with specific value
+```
 
-:::::::::::::::::::::::::::::::::::::::
-:: c-functionality for above enum
-:::::::::::::::::::::::::::::::::::::::
+## c-functionality for above enum
+```
 #if defined(ENABLE_STRINGIFY)
 
 //
@@ -78,3 +78,4 @@ FunctionCode FunctionCodeFromIndex(unsigned index);
 int FunctionCodeFromString(const char *str, FunctionCode *presult);
 
 #endif 
+```
