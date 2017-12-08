@@ -2,8 +2,8 @@
 #include <vector>
 #include <string>
 #include <cstring>
-
 #include <cstdio>
+#include <cstdarg>
 
 //
 // POSIX
@@ -22,6 +22,21 @@
 extern "C"
 {
 	#include "ini.h"
+}
+
+bool g_silentMode = true;
+
+
+void logf(const char *fmt, ...)
+{
+	if (!g_silentMode)
+	{
+		va_list args;
+		
+		va_start(args, fmt);
+		vprintf(fmt, args);
+		va_end(args);
+	}
 }
 
 void enumExtractName(const std::string &input, std::string &output);
@@ -112,20 +127,21 @@ struct statefields
 
 	std::vector<std::string> topExprs;
 	std::vector<std::string> bottomExprs;
+	std::vector<std::string> includeFiles;
 };
 /////////////////////
 
 void printHelp(const char *cmdName)
 {
-	printf("%s version %s\n", cmdName, ENUMG_VERSION);
-	printf("Usage: \n");
-	printf("  %s [file_1 [file_2 ... [file_n]]] [options]\n", cmdName);
-	printf("\n");
-	printf("options:\n");
-	printf("  -v        : print version and exit\n");
-	printf("  -V        : verbose output\n");
-	printf("  -h        : this screen\n");
-	printf("            : this screen (no arguments)\n");
+	logf("%s version %s\n", cmdName, ENUMG_VERSION);
+	logf("Usage: \n");
+	logf("  %s [file_1 [file_2 ... [file_n]]] [options]\n", cmdName);
+	logf("\n");
+	logf("options:\n");
+	logf("  -v        : print version and exit\n");
+	logf("  -V        : verbose output\n");
+	logf("  -h        : this screen\n");
+	logf("            : this screen (no arguments)\n");
 }
 
 
@@ -138,9 +154,9 @@ bool isParam(const char *str, const char *param)
 
 int strxpos(const char *str, int ch, int flags)
 {
-	if (str == NULL)
+	if (str == nullptr)
 	{
-		fprintf(stderr, "NULL string to strxpos\n");
+		fprintf(stderr, "nullptr string* to strxpos\n");
 		exit(1);
 	}
 	
@@ -182,7 +198,7 @@ bool getSubParam(const char *param, std::string &valOut, int paramIndex)
 	int len = strlen(param);
 	char buf[len+1];
 	strcpy(buf, param);
-	if (strtok(buf, ":") == NULL)
+	if (strtok(buf, ":") == nullptr)
 	{
 		return false;
 	}
@@ -191,10 +207,10 @@ bool getSubParam(const char *param, std::string &valOut, int paramIndex)
 	const char *delim = ",";
 	const char *pch = strtok(buf, delim);
 	int pos = 0;
-	while (pch != NULL && pos < paramIndex)
+	while (pch != nullptr && pos < paramIndex)
 	{
 		++pos;
-		pch = strtok(NULL, delim);
+		pch = strtok(nullptr, delim);
 	}
 	
 	if (pos == paramIndex)
@@ -285,7 +301,7 @@ void extractFileTitle(const std::string &input, std::string &output)
 
 int iniFieldHandler(void* data, const char* section, const char* name, const char* value)
 {
-	printf("[%s]%s=%s\n", section, name, value);
+	logf("[%s]%s=%s\n", section, name, value);
 	struct statefields &S = *reinterpret_cast<struct statefields *>(data);
 	if (0 != strcmp(section, S.curSection.c_str()))
 	{
@@ -324,6 +340,10 @@ int iniFieldHandler(void* data, const char* section, const char* name, const cha
 	else if (strcmp(name, "top") == 0)
 	{
 		S.topExprs.push_back(value);
+	}
+	else if (strcmp(name, "include-file") == 0)
+	{
+		S.includeFiles.push_back(value);
 	}
 	else if (strcmp(name, "bottom") == 0)
 	{
@@ -398,13 +418,6 @@ void makeEnumFiles(struct statefields &S)
 	fprintf(cHeaderFP, "#ifndef __enumg_HeaderGuard_%s_INCLUDED__\n", S.headerGuard.c_str());
 	fprintf(cHeaderFP, "#define __enumg_HeaderGuard_%s_INCLUDED__\n", S.headerGuard.c_str());
 	
-	if (S.stringifyDefine.size() > 0) fprintf(cSourceFP, "#if defined(%s)\n", S.stringifyDefine.c_str());
-	fprintf(cSourceFP, "#if defined(__cplusplus)\n");
-	fprintf(cSourceFP, "\t#include <cstring>\n");
-	fprintf(cSourceFP, "#else\n");
-	fprintf(cSourceFP, "\t#include <string.h>\n");
-	fprintf(cSourceFP, "#endif\n");
-	if (S.stringifyDefine.size() > 0) fprintf(cSourceFP, "#endif\n");
 	fprintf(cSourceFP, "#include \"%s\"\n", cHeaderFileName.c_str());
 	
 	for (auto line : S.topExprs)
@@ -412,9 +425,25 @@ void makeEnumFiles(struct statefields &S)
 		fprintf(cHeaderFP, "%s\n", line.c_str());
 	}
 	
+	for (auto line : S.includeFiles)
+	{
+		fprintf(cHeaderFP, "#include %s\n", line.c_str());
+	}
+	
+	if (S.stringifyDefine.size() > 0) fprintf(cSourceFP, "#if defined(%s)\n", S.stringifyDefine.c_str());
+	fprintf(cSourceFP, "#if defined(__cplusplus)\n");
+	fprintf(cSourceFP, "\t#include <cstring>\n");
+	fprintf(cSourceFP, "#else\n");
+	fprintf(cSourceFP, "\t#include <string.h>\n");
+	fprintf(cSourceFP, "#endif\n");
+	if (S.stringifyDefine.size() > 0) fprintf(cSourceFP, "#endif\n");
+	
+	
+	
+	
 	for (auto section : S.sections)
 	{
-		printf("write enum %s\n", section.name().c_str());
+		logf("write enum %s\n", section.name().c_str());
 		fprintf(cHeaderFP, "%s %s\n{\n", section.type().c_str(), section.name().c_str());
 		
 		for (auto entry : section.entries())
@@ -454,7 +483,7 @@ void makeEnumFiles(struct statefields &S)
 		fprintf(cSourceFP, "\tif (ix >= 0) {\n");
 		fprintf(cSourceFP, "\t\treturn g_%sStringArray[ix];\n", section.name().c_str());
 		fprintf(cSourceFP, "\t} else {\n");
-		fprintf(cSourceFP, "\t\treturn NULL;\n");
+		fprintf(cSourceFP, "\t\treturn nullptr;\n");
 		fprintf(cSourceFP, "\t}\n");
 		fprintf(cSourceFP, "}\n");
 		
@@ -549,7 +578,7 @@ int main(int argc, char **argv)
 	
 	if (opts.version_out)
 	{
-		printf("%s\n", ENUMG_VERSION);
+		logf("%s\n", ENUMG_VERSION);
 	}
 	else if (opts.help || inputFiles.size() == 0)
 	{
@@ -557,6 +586,8 @@ int main(int argc, char **argv)
 	}
 	else
 	{
+		g_silentMode = !opts.verbose;
+		
 		std::string introComment = 
 			"// file auto-generated by [enumg]\n"
 			"// at " __DATE__ " " __TIME__ "\n"
@@ -577,13 +608,13 @@ int main(int argc, char **argv)
 			struct statefields S;
 			S.introComment = introComment;
 			S.fileName = file;
-			printf("================================\n");
-			printf("input: %s\n", file.c_str());
-			printf("--------------parse-------------\n");
+			logf("================================\n");
+			logf("input: %s\n", file.c_str());
+			logf("--------------parse-------------\n");
 			process(S, opts, file.c_str());
-			printf("------------write file----------\n");
+			logf("------------write file----------\n");
 			makeEnumFiles(S);
-			printf("================================\n");
+			logf("================================\n");
 		}
 		
 		
