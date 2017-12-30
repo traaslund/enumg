@@ -38,7 +38,7 @@ field=SQ_NO_DATA
 field=FC_START_MSG=0xffff          # field with specific value
 
 # can have multiple definitions per file;
-# all are compined into one header/source pair
+# all are combined into one header/source pair
 [other enum]
 field=field1
 field=field2
@@ -86,7 +86,7 @@ FunctionCode FunctionCodeFromIndex(unsigned index);
 // "str": the string to convert
 // "presult": pointer to variable to store result if successful
 //
-int FunctionCodeFromString(const char *str, FunctionCode *presult);
+int FunctionCodeFromString(const char *str, FunctionCode *presult, bool ignoreCase = false);
 
 #endif 
 ```
