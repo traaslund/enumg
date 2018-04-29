@@ -587,7 +587,7 @@ void makeEnumFiles(struct statefields &S)
 		
 		if (section.thraitsName().size() > 0)
 		{
-			fprintf(cHeaderFP, "%s *%sThraits(%s value);\n", section.thraitsName().c_str(), section.name().c_str(), section.name().c_str());
+			fprintf(cHeaderFP, "%s *%s_GetThraits(%s value);\n", section.thraitsName().c_str(), section.name().c_str(), section.name().c_str());
 		}
 		
 //		if (!S.cppStringifyDisable)
@@ -698,7 +698,7 @@ void makeEnumFiles(struct statefields &S)
 				fprintf(cSourceFP, "\n");
 			} 
 			fprintf(cSourceFP, "};\n");
-			fprintf(cSourceFP, "%s *%sThraits(%s value)\n{\n", section.thraitsName().c_str(), section.name().c_str(), section.name().c_str());
+			fprintf(cSourceFP, "%s *%s_GetThraits(%s value)\n{\n", section.thraitsName().c_str(), section.name().c_str(), section.name().c_str());
 			fprintf(cSourceFP, "\tfor (int i = 0; i < %d; ++i) {\n", (int)list.size());
 			fprintf(cSourceFP, "\t\tauto &item = g_%sThraitsArray[i];\n", section.name().c_str());
 			fprintf(cSourceFP, "\t\tif (item.key == value) return item.value;\n");
