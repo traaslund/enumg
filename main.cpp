@@ -5,6 +5,13 @@
 #include <cstdio>
 #include <cstdarg>
 
+// string trimming
+#include <algorithm> 
+#include <functional> 
+#include <cctype>
+#include <locale>
+
+
 //
 // POSIX
 //
@@ -18,6 +25,8 @@
 #include <unistd.h>
 
 #define ENUMG_VERSION "0.9.2"
+
+
 
 extern "C"
 {
@@ -39,7 +48,34 @@ void logf(const char *fmt, ...)
 	}
 }
 
+
+// trim from start
+static inline std::string ltrim(const std::string &spar) 
+{
+	std::string s = spar;
+    s.erase(s.begin(), std::find_if(s.begin(), s.end(),
+            std::not1(std::ptr_fun<int, int>(std::isspace))));
+    return s;
+}
+
+// trim from end
+static inline std::string rtrim(const std::string &spar) 
+{
+	std::string s = spar;
+    s.erase(std::find_if(s.rbegin(), s.rend(),
+            std::not1(std::ptr_fun<int, int>(std::isspace))).base(), s.end());
+    return s;
+}
+
+// trim from both ends
+static inline std::string trim(const std::string &spar) 
+{
+	std::string s = spar;
+    return ltrim(rtrim(s));
+}
+
 void enumExtractName(const std::string &input, std::string &output);
+std::string enumGetThraitsData(const std::string &input, std::string &output);
 
 int iniFieldHandler(void* data, const char* section, const char* name, const char* value);
 
@@ -70,32 +106,42 @@ enum strposflags
 class Entry
 {
 public:
-	Entry(const std::string &fullText) :
-		m_fullText(fullText)
+	Entry(std::string fullText) 
 	{
+		fullText = enumGetThraitsData(fullText, m_thraits);
 		enumExtractName(fullText, m_name);
+		
+		m_fullText = trim(fullText);
+		
+		m_name = trim(m_name);
+		m_thraits = trim(m_thraits);
 	}
 
 	const std::string &name() const { return m_name; }
 	const std::string &fullText() const { return m_fullText; }
+	const std::string &thraits() const { return m_thraits; }
 
 private:
 	std::string m_name;
 	std::string m_fullText;
+	std::string m_thraits;
 };
 
 class Section
 {
 public:
-	Section(const std::string &name) :
-		m_name(name)
+	Section(const std::string &name) 
 	{
+		m_name = trim(name);
 	}
 
 	const std::string &name() const { return m_name; }
-	const std::string &type() const { return m_type; }
 	
+	const std::string &type() const { return m_type; }
 	void type(const std::string &val) { m_type = val; }
+	
+	const std::string &thraitsName() const { return m_thraitsName; }
+	void thraitsName(const std::string &val) { m_thraitsName = val; }
 	
 	const std::vector<Entry> &entries() const { return m_entries; }
 	std::vector<Entry> &entries() { return m_entries; }
@@ -103,6 +149,7 @@ public:
 private:
 	std::string m_name;
 	std::string m_type;
+	std::string m_thraitsName;
 	std::vector<Entry> m_entries;
 };
 
@@ -288,6 +335,21 @@ void enumExtractName(const std::string &input, std::string &output)
 	}
 }
 
+std::string enumGetThraitsData(const std::string &input, std::string &output)
+{
+	int posP = strfpos(input.c_str(), '(');
+	
+	if (posP >= 0)
+	{
+		output = input.substr(posP);
+		return input.substr(0, posP);
+	}
+	else
+	{
+		return input;
+	}
+}
+
 void extractFileTitle(const std::string &input, std::string &output)
 {
 	int pos = strlpos(input.c_str(), '.');
@@ -315,6 +377,18 @@ int iniFieldHandler(void* data, const char* section, const char* name, const cha
 		}
 	}
 	
+	std::string sectionStr = ((section)); 
+	std::string nameStr = ((name));
+	std::string valueStr = ((value));
+	sectionStr = trim(sectionStr);
+	nameStr = trim(nameStr);
+	valueStr = trim(valueStr);
+	
+	section = sectionStr.c_str();
+	name = nameStr.c_str();
+	value = valueStr.c_str();
+	
+	
 	if (strcmp(name, "c-header") == 0)
 	{
 		S.cHeader = value;
@@ -330,6 +404,10 @@ int iniFieldHandler(void* data, const char* section, const char* name, const cha
 	else if (strcmp(name, "type") == 0)
 	{
 		S.currentSection().type(value);
+	}
+	else if (strcmp(name, "thraits") == 0)
+	{
+		S.currentSection().thraitsName(value);
 	}
 	else if (strcmp(name, "stringify-define") == 0)
 	{
@@ -493,26 +571,24 @@ void makeEnumFiles(struct statefields &S)
 		
 		
 		
-		fprintf(cSourceFP, "int %sToIndex(%s value)\n", section.name().c_str(), section.name().c_str());
-		fprintf(cSourceFP, "{\n");
-		fprintf(cSourceFP, "\tunsigned count = %sValueCount();\n", section.name().c_str());
-		fprintf(cSourceFP, "\tfor (unsigned i = 0; i < count; ++i) {\n");
-		fprintf(cSourceFP, "\t\tif (value == g_%sValueArray[i]) { return i; }\n", section.name().c_str());
-		fprintf(cSourceFP, "\t}\n");
-		fprintf(cSourceFP, "\treturn -1;\n");
-		fprintf(cSourceFP, "}\n");
+		
 		if (S.stringifyDefine.size() > 0) fprintf(cSourceFP, "#endif\n");
 		
 		fprintf(cHeaderFP, "};\n");
 		
 		if (S.stringifyDefine.size() > 0) fprintf(cHeaderFP, "#if defined(%s)\n", S.stringifyDefine.c_str());
 		fprintf(cHeaderFP, "const char *%sToString(%s value);\n", section.name().c_str(), section.name().c_str());
-		fprintf(cHeaderFP, "int %sToIndex(%s value);\n", section.name().c_str(), section.name().c_str());
 		fprintf(cHeaderFP, "%s %sFromString(const char *str);\n", section.name().c_str(), section.name().c_str());
 		fprintf(cHeaderFP, "unsigned %sValueCount();\n", section.name().c_str());
 		fprintf(cHeaderFP, "%s %sFromIndex(unsigned index);\n", section.name().c_str(), section.name().c_str());
 		fprintf(cHeaderFP, "int %sFromString(const char *str, %s *presult, bool ignoreCase = false);\n", section.name().c_str(), section.name().c_str());
+		fprintf(cHeaderFP, "int %sToIndex(%s value);\n", section.name().c_str(), section.name().c_str());
 		if (S.stringifyDefine.size() > 0) fprintf(cHeaderFP, "#endif\n");
+		
+		if (section.thraitsName().size() > 0)
+		{
+			fprintf(cHeaderFP, "%s *%sThraits(%s value);\n", section.thraitsName().c_str(), section.name().c_str(), section.name().c_str());
+		}
 		
 //		if (!S.cppStringifyDisable)
 //		{
@@ -572,7 +648,65 @@ void makeEnumFiles(struct statefields &S)
 		fprintf(cSourceFP, "\t}\n");
 		fprintf(cSourceFP, "\treturn -1;\n");
 		fprintf(cSourceFP, "}\n");
+		
+		//
+		// To Index
+		//
+		fprintf(cSourceFP, "int %sToIndex(%s value)\n", section.name().c_str(), section.name().c_str());
+		fprintf(cSourceFP, "{\n");
+		fprintf(cSourceFP, "\tunsigned count = %sValueCount();\n", section.name().c_str());
+		fprintf(cSourceFP, "\tfor (unsigned i = 0; i < count; ++i) {\n");
+		fprintf(cSourceFP, "\t\tif (value == g_%sValueArray[i]) { return i; }\n", section.name().c_str());
+		fprintf(cSourceFP, "\t}\n");
+		fprintf(cSourceFP, "\treturn -1;\n");
+		fprintf(cSourceFP, "}\n");
+		
 		if (S.stringifyDefine.size() > 0) fprintf(cSourceFP, "#endif\n");
+		
+		
+		
+		//
+		// thraits
+		//
+		if (section.thraitsName().size() > 0) 
+		{
+			std::vector<std::string> list;
+			for (auto entry : section.entries())
+			{
+				if (entry.thraits().size() > 0)
+				{
+					list.push_back(entry.thraits());
+				}
+			}
+			
+			fprintf(cSourceFP, "\n");
+			
+			fprintf(cSourceFP, "class __%sThraitsHolder {\n", section.name().c_str());
+			fprintf(cSourceFP, "public:\n");
+			fprintf(cSourceFP, "\t%s key; %s *value;\n", section.name().c_str(), section.thraitsName().c_str());
+			fprintf(cSourceFP, "\t__%sThraitsHolder(%s keyArg, %s *valueArg) : key(keyArg), value(valueArg) { }\n", section.name().c_str(), section.name().c_str(), section.thraitsName().c_str());
+			fprintf(cSourceFP, "\t~__%sThraitsHolder() { if (value != nullptr) delete value; }\n", section.name().c_str());
+			fprintf(cSourceFP, "};\n");
+			
+			fprintf(cSourceFP, "%s g_%sThraitsArray[%d] = {\n", section.thraitsName().c_str(), section.name().c_str(), (int)list.size());
+			for (unsigned i = 0; i < list.size(); ++i)
+			{
+				std::string data = (list[i].size() == 0) ? "nullptr" : ("new " + section.thraitsName() + list[i]);
+				fprintf(cSourceFP, "\t__%sThraitsHolder(%s)", section.name().c_str(), data.c_str());
+				
+				if (i < list.size() -1) fprintf(cSourceFP, ",");
+				fprintf(cSourceFP, "\n");
+			} 
+			fprintf(cSourceFP, "};\n");
+			fprintf(cSourceFP, "%s *%sThraits(%s value)\n{\n", section.thraitsName().c_str(), section.name().c_str(), section.name().c_str());
+			fprintf(cSourceFP, "\tfor (int i = 0; i < %d; ++i) {\n", (int)list.size());
+			fprintf(cSourceFP, "\t\tauto &item = g_%sThraitsArray[i];\n", section.name().c_str());
+			fprintf(cSourceFP, "\t\tif (item.key == value) return item.value;\n");
+			fprintf(cSourceFP, "}\n");
+			fprintf(cSourceFP, "\treturn nullptr;\n");
+			fprintf(cSourceFP, "}\n");
+		}
+		
 		
 	}
 	
