@@ -670,12 +670,12 @@ void makeEnumFiles(struct statefields &S)
 		//
 		if (section.thraitsName().size() > 0) 
 		{
-			std::vector<std::string> list;
+			std::vector<Entry> list;
 			for (auto entry : section.entries())
 			{
 				if (entry.thraits().size() > 0)
 				{
-					list.push_back(entry.thraits());
+					list.push_back(entry);
 				}
 			}
 			
@@ -688,11 +688,16 @@ void makeEnumFiles(struct statefields &S)
 			fprintf(cSourceFP, "\t~__%sThraitsHolder() { if (value != nullptr) delete value; }\n", section.name().c_str());
 			fprintf(cSourceFP, "};\n");
 			
-			fprintf(cSourceFP, "%s g_%sThraitsArray[%d] = {\n", section.thraitsName().c_str(), section.name().c_str(), (int)list.size());
+			//fprintf(cSourceFP, "%s g_%sThraitsArray[%d] = {\n", section.thraitsName().c_str(), section.name().c_str(), (int)list.size());
+			fprintf(cSourceFP, "__%sThraitsHolder g_%sThraitsArray[%d] = {\n", 
+				section.name().c_str(), section.name().c_str(), (int)list.size()
+			);
+			
 			for (unsigned i = 0; i < list.size(); ++i)
 			{
-				std::string data = (list[i].size() == 0) ? "nullptr" : ("new " + section.thraitsName() + list[i]);
-				fprintf(cSourceFP, "\t__%sThraitsHolder(%s)", section.name().c_str(), data.c_str());
+				std::string nameKey = list[i].name().c_str();
+				std::string data = "new " + section.thraitsName() + list[i].thraits().c_str();
+				fprintf(cSourceFP, "\t__%sThraitsHolder(%s, %s)", section.name().c_str(), nameKey.c_str(), data.c_str());
 				
 				if (i < list.size() -1) fprintf(cSourceFP, ",");
 				fprintf(cSourceFP, "\n");
