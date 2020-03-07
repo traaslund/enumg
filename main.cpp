@@ -32,6 +32,7 @@
 
 extern "C"
 {
+	#define INI_MAX_LINE 2048
 	#include "ini.h"
 }
 
