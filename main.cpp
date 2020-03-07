@@ -143,6 +143,9 @@ public:
 	const std::string &thraitsName() const { return m_thraitsName; }
 	void thraitsName(const std::string &val) { m_thraitsName = val; }
 	
+	const std::string &thraitsEnableMacro() const { return m_thraitsEnableMacro; }
+	void thraitsEnableMacro(const std::string &val) { m_thraitsEnableMacro = val; }
+	
 	const std::vector<Entry> &entries() const { return m_entries; }
 	std::vector<Entry> &entries() { return m_entries; }
 	
@@ -150,6 +153,7 @@ private:
 	std::string m_name;
 	std::string m_type;
 	std::string m_thraitsName;
+	std::string m_thraitsEnableMacro;
 	std::vector<Entry> m_entries;
 };
 
@@ -409,6 +413,10 @@ int iniFieldHandler(void* data, const char* section, const char* name, const cha
 	{
 		S.currentSection().thraitsName(value);
 	}
+	else if (strcmp(name, "thraits-enable-macro") == 0)
+	{
+		S.currentSection().thraitsEnableMacro(value);
+	}
 	else if (strcmp(name, "stringify-define") == 0)
 	{
 		S.stringifyDefine = value;
@@ -451,6 +459,49 @@ int iniFieldHandler(void* data, const char* section, const char* name, const cha
 	return 0;
 }
 
+void ltrim(std::string &s) 
+{
+    s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](int ch) {
+        return !std::isspace(ch);
+    }));
+}
+
+void rtrim(std::string &s) 
+{
+    s.erase(std::find_if(s.rbegin(), s.rend(), [](int ch) {
+        return !std::isspace(ch);
+    }).base(), s.end());
+}
+
+void trim(std::string &s) 
+{
+    ltrim(s);
+    rtrim(s);
+}
+
+#define HEADER_GUARD_START_TOKEN "//$$enumg_hg_macro_name="
+
+std::string tryReadOldHeaderGuardMacroName(const std::string &filename)
+{
+	FILE *pf = fopen(filename.c_str(), "r");
+	if (!pf) return std::string();
+	
+	size_t bufLen = 2048;
+	char buf[bufLen];
+	const char *startToken = HEADER_GUARD_START_TOKEN;
+	size_t startTokenLen = strlen(startToken);
+	
+	while ( fgets(buf, bufLen, pf) ) {
+		if (strncmp(startToken, buf, startTokenLen) == 0) {
+			std::string result = buf + startTokenLen;
+			trim(result);
+			return result;
+		}
+	}
+	
+	return std::string();
+}
+
 void makeEnumFiles(struct statefields &S)
 {
 	srand(time(0));
@@ -484,13 +535,19 @@ void makeEnumFiles(struct statefields &S)
 		S.headerGuard += std::string("_") + std::string(rndBuf);
 	}
 	
-	
-	
 	std::string cHeaderFileName = title + "." + S.cHeader;
 	std::string cHeaderActualFileName = S.includeDir + cHeaderFileName;
 	std::string cSourceFileName = S.srcDir + title + "." + S.cSource;
+	
+	std::string oldHGMacroName = tryReadOldHeaderGuardMacroName(cHeaderActualFileName);
+	if (oldHGMacroName.size() > 0) {
+		S.headerGuard = oldHGMacroName;
+	}
+	
 	FILE *cHeaderFP = fopen(cHeaderActualFileName.c_str(), "w");
 	FILE *cSourceFP = fopen(cSourceFileName.c_str(), "w");
+	
+	fprintf(cHeaderFP, "%s%s\n", HEADER_GUARD_START_TOKEN, S.headerGuard.c_str());
 	
 	fprintf(cHeaderFP, "%s\n", S.introComment.c_str());
 	fprintf(cSourceFP, "%s\n", S.introComment.c_str());
@@ -581,13 +638,21 @@ void makeEnumFiles(struct statefields &S)
 		fprintf(cHeaderFP, "%s %sFromString(const char *str);\n", section.name().c_str(), section.name().c_str());
 		fprintf(cHeaderFP, "unsigned %sValueCount();\n", section.name().c_str());
 		fprintf(cHeaderFP, "%s %sFromIndex(unsigned index);\n", section.name().c_str(), section.name().c_str());
-		fprintf(cHeaderFP, "int %sFromString(const char *str, %s *presult, bool ignoreCase = false);\n", section.name().c_str(), section.name().c_str());
+		fprintf(cHeaderFP, "int %sFromString(const char *str, %s *presult, bool ignoreCase = false, int ignorePrefixLen = 0);\n", section.name().c_str(), section.name().c_str());
 		fprintf(cHeaderFP, "int %sToIndex(%s value);\n", section.name().c_str(), section.name().c_str());
 		if (S.stringifyDefine.size() > 0) fprintf(cHeaderFP, "#endif\n");
 		
 		if (section.thraitsName().size() > 0)
 		{
+			if (section.thraitsEnableMacro().size() > 0) {
+				fprintf(cHeaderFP, "#if defined(%s)\n", section.thraitsEnableMacro().c_str());
+			}
+			
 			fprintf(cHeaderFP, "const %s *%s_GetThraits(%s value, const %s *defaultResult = nullptr);\n", section.thraitsName().c_str(), section.name().c_str(), section.name().c_str(), section.thraitsName().c_str());
+			
+			if (section.thraitsEnableMacro().size() > 0) {
+				fprintf(cHeaderFP, "#endif // %s\n", section.thraitsEnableMacro().c_str());
+			}
 		}
 		
 //		if (!S.cppStringifyDisable)
@@ -618,14 +683,14 @@ void makeEnumFiles(struct statefields &S)
 		//
 		// from string 
 		//
-		fprintf(cSourceFP, "int %sFromString(const char *str, %s *presult, bool ignoreCase)\n{\n", section.name().c_str(), section.name().c_str());
+		fprintf(cSourceFP, "int %sFromString(const char *str, %s *presult, bool ignoreCase, int ignorePrefixLen)\n{\n", section.name().c_str(), section.name().c_str());
 		
 		fprintf(cSourceFP, "\tunsigned len = %sValueCount();\n", section.name().c_str());
 		fprintf(cSourceFP, "\tfor(unsigned i = 0; i < len; ++i)\n\t{\n");
 		fprintf(cSourceFP, "\t\t%s value = %sFromIndex(i);\n", section.name().c_str(), section.name().c_str());
 		fprintf(cSourceFP, "\t\tconst char *checkStr = %sToString(value);\n", section.name().c_str());
 		fprintf(cSourceFP, "\t\tbool equal = true;\n");
-		fprintf(cSourceFP, "\t\tfor (const char *a = str, *b = checkStr; ; ++a, ++b)\n");
+		fprintf(cSourceFP, "\t\tfor (const char *a = str, *b = checkStr + ignorePrefixLen; ; ++a, ++b)\n");
 		fprintf(cSourceFP, "\t\t{\n");
 		fprintf(cSourceFP, "\t\t\tif (*a == (char)0 || *b == (char)0)\n");
 		fprintf(cSourceFP, "\t\t\t{\n");
@@ -670,6 +735,10 @@ void makeEnumFiles(struct statefields &S)
 		//
 		if (section.thraitsName().size() > 0) 
 		{
+			if (section.thraitsEnableMacro().size() > 0) {
+				fprintf(cSourceFP, "#if defined(%s)\n", section.thraitsEnableMacro().c_str());
+			}
+			
 			std::vector<Entry> list;
 			for (auto entry : section.entries())
 			{
@@ -710,6 +779,10 @@ void makeEnumFiles(struct statefields &S)
 			fprintf(cSourceFP, "\t}\n");
 			fprintf(cSourceFP, "\treturn defaultResult;\n");
 			fprintf(cSourceFP, "}\n");
+			
+			if (section.thraitsEnableMacro().size() > 0) {
+				fprintf(cSourceFP, "#endif // %s\n", section.thraitsEnableMacro().c_str());
+			}
 		}
 		
 		
@@ -753,9 +826,9 @@ int main(int argc, char **argv)
 	else
 	{
 		std::string introComment = 
+			"// ==============================\n"
 			"// file auto-generated by [enumg]\n"
-			"// at " __DATE__ " " __TIME__ "\n"
-			"//\n"
+			"// ==============================\n"
 			"//     http://github.com/traaslund/enumg\n"
 			"//\n"
 			"// command: ";
