@@ -11,6 +11,8 @@
 #include <cctype>
 #include <locale>
 
+// filesystem
+#include <filesystem>
 
 //
 // POSIX
@@ -491,15 +493,49 @@ std::string tryReadOldHeaderGuardMacroName(const std::string &filename)
 	const char *startToken = HEADER_GUARD_START_TOKEN;
 	size_t startTokenLen = strlen(startToken);
 	
+	std::string result;
+	
 	while ( fgets(buf, bufLen, pf) ) {
 		if (strncmp(startToken, buf, startTokenLen) == 0) {
-			std::string result = buf + startTokenLen;
+			result = buf + startTokenLen;
 			trim(result);
-			return result;
+			break;
 		}
 	}
 	
-	return std::string();
+	fclose(pf);
+	
+	return result;
+}
+
+
+int file_compare(const std::string &file1, const std::string &file2)
+{
+	FILE *pf1 = fopen(file1.c_str(), "r");
+	FILE *pf2 = fopen(file2.c_str(), "r");
+	
+	int result = 0;
+	bool haveResult = false;
+	
+	if (pf1 == nullptr && pf2 != nullptr) { result = -1; haveResult = true; }
+	else if (pf1 != nullptr && pf2 == nullptr) { result = 1; haveResult = true; }
+	else if (pf1 == nullptr && pf2 == nullptr) { result = 0; haveResult = true; }
+	
+	while (!haveResult) {
+		int ch1 = fgetc(pf1);
+		int ch2 = fgetc(pf2);
+		
+		if (ch1 == EOF && ch2 != EOF) { result = -1; haveResult = true; }
+		else if (ch1 != EOF && ch2 == EOF) { result = 1; haveResult = true; }
+		else if (ch1 == EOF && ch2 == EOF) { result = 0; haveResult = true; }
+		else if (ch1 < ch2) { result = -1; haveResult = true; }
+		else if (ch1 > ch2) { result = 1; haveResult = true; }
+	}
+	
+	if (pf1 != nullptr) fclose(pf1);
+	if (pf2 != nullptr) fclose(pf2);
+	
+	return result;
 }
 
 void makeEnumFiles(struct statefields &S)
@@ -536,10 +572,14 @@ void makeEnumFiles(struct statefields &S)
 	}
 	
 	std::string cHeaderFileName = title + "." + S.cHeader;
-	std::string cHeaderActualFileName = S.includeDir + cHeaderFileName;
-	std::string cSourceFileName = S.srcDir + title + "." + S.cSource;
 	
-	std::string oldHGMacroName = tryReadOldHeaderGuardMacroName(cHeaderActualFileName);
+	std::string cHeaderActualFileName = tmpnam(nullptr);
+	std::string cSourceFileName = tmpnam(nullptr);
+	
+	std::string final_cHeaderActualFileName = S.includeDir + cHeaderFileName;
+	std::string final_cSourceFileName = S.srcDir + title + "." + S.cSource;
+	
+	std::string oldHGMacroName = tryReadOldHeaderGuardMacroName(final_cHeaderActualFileName);
 	if (oldHGMacroName.size() > 0) {
 		S.headerGuard = oldHGMacroName;
 	}
@@ -796,6 +836,19 @@ void makeEnumFiles(struct statefields &S)
 	fprintf(cHeaderFP, "#endif // (header guard)\n");
 	fclose(cHeaderFP);
 	fclose(cSourceFP);
+	
+	auto copyOptions = std::filesystem::copy_options::overwrite_existing;
+	
+	if (file_compare(cHeaderActualFileName, final_cHeaderActualFileName) != 0) {
+		std::filesystem::copy(cHeaderActualFileName, final_cHeaderActualFileName, copyOptions);
+	}
+	
+	if (file_compare(cSourceFileName, final_cSourceFileName) != 0) {
+		std::filesystem::copy(cSourceFileName, final_cSourceFileName, copyOptions);
+	}
+	
+	remove(cHeaderActualFileName.c_str());
+	remove(cSourceFileName.c_str());
 }
 
 int main(int argc, char **argv)
